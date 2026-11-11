@@ -1,0 +1,24 @@
+{
+  "source": "/personal_fast_storage/Route_B_SuperMimic/models/force_action_mixed_v3_release/seed0/best.pt",
+  "seed": 0,
+  "epochs": 30,
+  "steps_per_epoch": 100,
+  "lr": 4e-05,
+  "train_runs": {
+    "low": 768,
+    "high": 768,
+    "constant": 768,
+    "x90": 384,
+    "adaptive": 192
+  },
+  "val_runs": {
+    "low": 256,
+    "high": 256,
+    "constant": 256,
+    "x90": 128,
+    "adaptive": 64
+  },
+  "batch": "per step/domain: 384 active + 256 release + 128 pre-force",
+  "loss": "SmoothL1(pred/30, label/30); active weight 2, release 1, x90 release 4, adaptive release 2, pre 0.25",
+  "selection": "minimum adaptive active + 0.25*adaptive release val MAE, with low/spring/grid/x90 active <= source + 1N"
+}

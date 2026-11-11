@@ -1,0 +1,118 @@
+{
+  "metric": "frame-weighted mean ||predicted 3D force - labeled 3D force||_2, N",
+  "ci": "paired 5000x bootstrap, resampling trajectories",
+  "cases": {
+    "final_low_v4": {
+      "label": "Constant 0-30 N",
+      "runs_with_active_force": 206,
+      "active_frames": 9750,
+      "true_active_magnitude_mean_n": 20.5256404876709,
+      "original930_active_mae_n": 4.779284477233887,
+      "revised930_active_mae_n": 2.0794167518615723,
+      "revised_minus_original_n": -2.6998682022094727,
+      "paired_run_bootstrap95_n": [
+        -2.949747997790537,
+        -2.4727704544473457
+      ],
+      "improved_runs": 203,
+      "pre_force_mae_n": [
+        0.5529857277870178,
+        0.4408208727836609
+      ],
+      "release_mae_n": [
+        1.8224679231643677,
+        1.107704520225525
+      ]
+    },
+    "final_spring_base_v4": {
+      "label": "Spring 0-150 N",
+      "runs_with_active_force": 221,
+      "active_frames": 15016,
+      "true_active_magnitude_mean_n": 60.13804626464844,
+      "original930_active_mae_n": 13.889480590820312,
+      "revised930_active_mae_n": 10.473402976989746,
+      "revised_minus_original_n": -3.4160778522491455,
+      "paired_run_bootstrap95_n": [
+        -3.9396056563081587,
+        -2.9312586020609297
+      ],
+      "improved_runs": 199,
+      "pre_force_mae_n": [
+        0.5448024868965149,
+        0.42067211866378784
+      ],
+      "release_mae_n": [
+        3.9589362144470215,
+        2.4293735027313232
+      ]
+    },
+    "final_grid_v4": {
+      "label": "Constant 30-120 N",
+      "runs_with_active_force": 256,
+      "active_frames": 18273,
+      "true_active_magnitude_mean_n": 71.47102355957031,
+      "original930_active_mae_n": 23.84144401550293,
+      "revised930_active_mae_n": 12.127456665039062,
+      "revised_minus_original_n": -11.7139892578125,
+      "paired_run_bootstrap95_n": [
+        -13.198995083859622,
+        -10.320440399941846
+      ],
+      "improved_runs": 255,
+      "pre_force_mae_n": [
+        0.5652768015861511,
+        0.5030191540718079
+      ],
+      "release_mae_n": [
+        6.750959396362305,
+        4.323061943054199
+      ]
+    },
+    "final_x90_v4": {
+      "label": "Constant +X 90 N",
+      "runs_with_active_force": 128,
+      "active_frames": 11096,
+      "true_active_magnitude_mean_n": 90.0,
+      "original930_active_mae_n": 48.890018463134766,
+      "revised930_active_mae_n": 3.7223689556121826,
+      "revised_minus_original_n": -45.16764450073242,
+      "paired_run_bootstrap95_n": [
+        -45.79056158484495,
+        -44.550182128359005
+      ],
+      "improved_runs": 128,
+      "pre_force_mae_n": [
+        0.6189229488372803,
+        0.42667779326438904
+      ],
+      "release_mae_n": [
+        35.04210662841797,
+        1.340494155883789
+      ]
+    },
+    "adaptive_step_135_fresh_v10": {
+      "label": "135 N nominal stepping replay",
+      "physical_runs": 16,
+      "branch_trajectories": 64,
+      "active_frames": 3618,
+      "original930_active_mae_n": 21.71949005126953,
+      "revised930_active_mae_n": 6.711771488189697,
+      "revised_minus_original_n": -15.007718805649981,
+      "paired_run_bootstrap95_n": [
+        -18.128370660999014,
+        -12.274614803672565
+      ],
+      "improved_physical_runs": 16,
+      "pre_force_mae_n": [
+        2.826869249343872,
+        0.6408262848854065
+      ],
+      "release_mae_n": [
+        5.954131603240967,
+        1.343530535697937
+      ],
+      "controller_note": "controllers unchanged; 930D models evaluated offline on prior-estimator-controlled trajectories"
+    }
+  },
+  "sphere_contact_note": "Different contact-force target; not an external-wrench accuracy benchmark."
+}

@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+data/
+logs/
+outputs/
+*.npz
+*.npy
+*.mp4
+.DS_Store
