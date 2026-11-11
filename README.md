@@ -1,70 +1,57 @@
 # G1 Route B V4 力估计器
 
-这是一个面向 Unitree G1 人形机器人的三维外力估计器。模型读取
-SuperMimic 的 930 维本体状态历史，输出作用在机器人躯干上的三维外力。
+一个根据 Unitree G1 人形机器人本体状态历史，估计机器人躯干当前受到多少
+三维外力的神经网络。
 
-仓库中包括：
+> 输入：机器人最近 10 帧本体状态与动作历史。
+> 输出：作用在 `torso_link` 上的三维外力 `[Fx, Fy, Fz]`，单位为 N。
 
-- 已训练的 V4 权重。
-- V4 推理代码。
-- VAE 与动作历史编码器结构。
-- 训练参考代码。
-- 训练配置、评估结果和使用说明。
+## 这是什么
 
-## 快速开始
+机器人在被手、球体、弹簧推杆或其他物体推动时，通常希望知道：
 
-### 1. 环境要求
+- 力有多大。
+- 力的方向是什么。
+- 是否需要后撤、迈步或调整动作以保持平衡。
 
-- Python 3.10 或更高版本。
-- PyTorch。
-- NumPy。
-- 如果有 NVIDIA GPU，建议使用 CUDA。
+这个仓库提供的是一个已经训练好的 **V4 力估计器**。它读取机器人控制器本来
+就能获得的本体观测，估计当前施加在机器人躯干上的外力。
 
-安装依赖：
+模型结合了：
 
-```bash
-pip install -r requirements.txt
-```
+- VAE 本体状态编码器。
+- 动作历史编码器。
+- 三维外力输出头。
 
-### 2. 设置代码路径
+该模型主要面向 **仿真中的 SuperMimic + Unitree G1** 环境。
+SuperMimic 是一个根据人体动作参考控制人形机器人运动的策略。
 
-在仓库根目录执行：
+## 它能做什么
 
-```bash
-export PYTHONPATH="$(pwd)/src:${PYTHONPATH:-}"
-```
+- 从 930 维本体观测中估计当前三维外力。
+- 为力反馈控制、卸力策略和抗扰动策略提供输入。
+- 分析机器人在碰撞或持续推力下的受力变化。
+- 在相同数据契约下批量运行离线推理。
 
-在 VPS 或没有图形界面的服务器上，还需要：
+## 它不能做什么
 
-```bash
-export MUJOCO_GL=disable
-export LD_LIBRARY_PATH="/usr/local/cuda-13.0/compat:${LD_LIBRARY_PATH:-}"
-```
+当前 V4 模型不输出：
 
-### 3. 加载模型
+- 接触点位置。
+- 多接触点集合。
+- 外力矩。
+- 未来时刻的力。
+- 接触力的法向/切向分解。
+- 新的关节动作。
 
-```python
-import torch
+这个模型也不是经过实机标定的力传感器。当前报告精度来自仿真数据，不能直接
+视为真实机器人上的测量精度。
 
-from force_action_branch_v2 import load_action_force_estimator
+## 输入与输出
 
-checkpoint = "models/v4_force_estimator.pt"
-estimator = load_action_force_estimator(
-    checkpoint,
-    device="cuda:0",  # 没有 GPU 时改为 "cpu"
-)
+### 输入
 
-# next_obs 必须是 env.step(action) 执行后的观测。
-with torch.no_grad():
-    force_torso_n = estimator(next_obs["policy"].float())
-
-print(force_torso_n.shape)  # [batch_size, 3]
-print(force_torso_n)        # [Fx, Fy, Fz]
-```
-
-## 模型输入
-
-输入是 SuperMimic 环境中的：
+输入必须来自 SuperMimic 的步后观测：
 
 ```python
 next_obs["policy"]
@@ -76,11 +63,17 @@ next_obs["policy"]
 [batch_size, 930]
 ```
 
-数据类型应为 `float32`。
+数据类型：
 
-930 维输入由最近 10 帧本体状态和动作历史组成：
+```text
+float32
+```
 
-| 内容 | 维度 | 索引范围 |
+不要在外部再次做归一化，模型内部会使用训练时保存的均值和标准差。
+
+930 维输入的组成：
+
+| 输入内容 | 维度 | 索引 |
 | --- | ---: | --- |
 | 关节位置 | 10 × 29 = 290 | `[0:290]` |
 | 关节速度 | 10 × 29 = 290 | `[290:580]` |
@@ -88,9 +81,17 @@ next_obs["policy"]
 | 投影重力 | 10 × 3 = 30 | `[610:640]` |
 | 上一动作历史 | 10 × 29 = 290 | `[640:930]` |
 
-控制周期为 **20 ms**，即 50 Hz。
+这些数据对应最近 10 个控制帧。控制周期为 **20 ms**。
 
-## 模型输出
+输入中不包含：
+
+- `obs["goal"]`。
+- 真实外力标签。
+- 推手位置。
+- 接触点。
+- 未来状态。
+
+### 输出
 
 输出形状：
 
@@ -106,19 +107,122 @@ next_obs["policy"]
 
 - 单位：N。
 - 坐标系：`torso_link` 局部坐标系。
-- 物理含义：仿真中施加到机器人躯干上的三维外力估计。
+- 每个样本表示该控制帧估计的躯干外力。
 
-该模型**不输出**：
+例如：
 
-- 接触点。
-- 外力矩。
-- 多接触点集合。
-- 未来时刻的力。
-- 关节动作。
+```python
+tensor([[12.5, -3.1, 48.2]])
+```
 
-## 网络结构
+表示当前估计力为：
 
-### VAE 编码器
+```text
+Fx = 12.5 N
+Fy = -3.1 N
+Fz = 48.2 N
+```
+
+## 最快运行方式
+
+### 1. 安装依赖
+
+```bash
+pip install -r requirements.txt
+```
+
+### 2. 设置 Python 路径
+
+在仓库根目录执行：
+
+```bash
+export PYTHONPATH="$(pwd)/src:${PYTHONPATH:-}"
+```
+
+### 3. 加载并测试模型
+
+```python
+import torch
+
+from force_action_branch_v2 import load_action_force_estimator
+
+estimator = load_action_force_estimator(
+    "models/v4_force_estimator.pt",
+    device="cuda:0",  # 没有 GPU 时改成 "cpu"
+)
+
+policy_obs = torch.zeros((1, 930), dtype=torch.float32, device="cuda:0")
+
+with torch.no_grad():
+    force = estimator(policy_obs)
+
+print(force.shape)  # torch.Size([1, 3])
+```
+
+如果这段代码能够输出 `[1, 3]`，说明权重、代码和运行环境已经正确加载。
+
+## 完整调用顺序
+
+模型必须使用 `env.step(action)` **之后**的观测，因为训练标签与该步执行后的
+机器人状态对齐。
+
+```python
+from force_action_branch_v2 import load_action_force_estimator
+
+estimator = load_action_force_estimator(
+    "models/v4_force_estimator.pt",
+    device="cuda:0",
+)
+
+obs, info = env.reset()
+
+for step in range(max_steps):
+    # 1. 根据当前观测生成动作。
+    action = policy(obs["policy"], obs["goal"])
+
+    # 2. 执行动作。
+    next_obs, reward, terminated, truncated, info = env.step(action)
+
+    # 3. 使用步后观测估计当前外力。
+    with torch.no_grad():
+        force_torso_n = estimator(next_obs["policy"].float())
+
+    # 4. 下游控制、记录或可视化可以使用 force_torso_n。
+    # 注意：加载估计器本身不会修改 policy 输出的动作。
+
+    obs = next_obs
+
+    if (terminated | truncated).any():
+        break
+```
+
+常见错误是使用执行动作之前的 `obs`。正确对齐方式是：
+
+```text
+action_t -> env.step(action_t) -> next_obs_t -> 标签属于第 t 步外力
+```
+
+## 命令行推理
+
+准备一个 NumPy 文件，形状为 `[930]` 或 `[N, 930]`：
+
+```bash
+python examples/infer.py \
+  --checkpoint models/v4_force_estimator.pt \
+  --obs observation.npy \
+  --out prediction.npy
+```
+
+输入输出示例：
+
+```text
+observation.npy: [100, 930]
+prediction.npy:  [100, 3]
+```
+
+## 模型结构
+
+### 本体状态 VAE
 
 ```text
 930 -> 512 -> 256 -> 128
@@ -126,8 +230,12 @@ next_obs["policy"]
 
 输出：
 
-- 7 维隐变量均值 `mu`。
-- 7 维隐变量对数方差 `logvar`。
+```text
+mu:     7 维
+logvar: 7 维
+```
+
+推理时力头使用均值 `mu`。
 
 ### 动作历史编码器
 
@@ -135,17 +243,15 @@ next_obs["policy"]
 290 -> 64 -> 16
 ```
 
-### 力输出头
+### 三维力输出头
 
 ```text
 (7 + 16) -> 64 -> 64 -> 3
 ```
 
-最后一层输出乘以 `30`，得到以 N 为单位的三维力。
+最后一层输出乘以 `30`，转换为以 N 为单位的力。
 
-## 权重信息
-
-权重文件：
+## 权重文件
 
 ```text
 models/v4_force_estimator.pt
@@ -157,39 +263,15 @@ SHA-256：
 b1f4e81db9d5c31b5fd96224f6a8516256b0accf5cf8cccd867a3626e8482286
 ```
 
-校验权重：
+校验：
 
 ```bash
 sha256sum -c models/SHA256SUMS
 ```
 
-## 命令行推理
+## 已报告的仿真测试结果
 
-准备一个 NumPy 观测文件，形状为 `[930]` 或 `[N, 930]`。
-
-```bash
-python examples/infer.py \
-  --checkpoint models/v4_force_estimator.pt \
-  --obs observation.npy \
-  --out prediction.npy
-```
-
-输出文件中的形状为：
-
-```text
-[N, 3]
-```
-
-## 训练代码说明
-
-`src/train_force_action_mixed_v4_adaptive.py` 是 V4 的训练参考代码。
-
-仓库没有上传原始训练数据和上一阶段的 V3 源权重，因此不能仅凭本仓库直接
-从头复现 V4 训练。该文件主要用于查看损失函数、数据接口和微调流程。
-
-## 已报告的独立测试结果
-
-以下指标是受力有效帧上的三维力向量 MAE：
+表中的误差为真实受力有效帧上的三维力向量 MAE：
 
 ```text
 mean(||预测三维力 - 真实三维力||₂)
@@ -203,72 +285,121 @@ mean(||预测三维力 - 真实三维力||₂)
 | 持续 +X 90 N、随机撤力 | 3.72 N |
 | 名义 135 N 迈步轨迹离线重放 | 6.71 N |
 
-详细结果见：
+结果文件：
 
 - `evaluations/final_v4_comparison.json`
 - `evaluations/final_v4_comparison.png`
 - `docs/V4_inference_handoff.md`
 - `docs/V4_evaluation_notes.md`
 
-## 使用注意事项
+这些结果的前提是：
 
-### 使用完整 930 维输入
+- 数据来自仿真。
+- 力标签为仿真中施加到躯干的外力。
+- 不同力坐标系、控制策略或接触模型不能直接套用这些数值。
 
-不要只截取前 640 维，也不要自行删除动作历史。模型需要完整 930 维输入。
+## 使用边界
 
-### 输入必须对齐到步后观测
+### 必须使用完整 930 维输入
 
-训练时使用的是：
-
-```python
-next_obs, reward, terminated, truncated, info = env.step(action)
-```
-
-因此推理时应使用 `next_obs["policy"]`，不要错误地对齐到执行动作之前的观测。
+不要截取前 640 维，也不要删除动作历史。
 
 ### 不要重复归一化
 
-模型内部已经保存并使用训练时的均值与标准差。外部再次归一化会破坏输入尺度。
+模型内部已经执行归一化。外部再次归一化会改变输入尺度，导致输出失真。
 
-### 当前输出使用躯干坐标系
+### 输出是躯干坐标系的力
 
-输出位于 `torso_link` 局部坐标系。如果下游控制器使用世界坐标系、骨盆坐标系
-或安装坐标系，必须自行完成旋转和平移转换。
+如果下游程序使用世界坐标系、骨盆坐标系或其他安装坐标系，需要执行正确的
+旋转和坐标变换。
 
-## 适用边界
+### 仿真精度不等于实机精度
 
-- 当前精度来自仿真实验，不代表实机传感器精度。
-- 模型估计的是施加到躯干的三维外力，不等同于通用接触力传感器。
-- 力估计准确不代表闭环卸力效果一定提升。
-- 更换控制策略、力坐标系、接触模型或机器人柔顺参数后，需要重新验证。
-- 球体接触、多接触点、持续大力和跌倒后的状态属于不同数据分布，应单独测试。
+实机部署前需要重新定义：
+
+- 可用传感器。
+- 力坐标系。
+- 低通滤波。
+- 推理时延。
+- 真值测量方式。
+
+### 力估计准确不等于控制一定改善
+
+模型只提供力估计。控制器如何使用该估计值、是否需要阻抗或导纳控制，需要
+单独设计和闭环验证。
+
+## 仓库结构
+
+```text
+src/
+  force_action_branch_v2.py          V4 推理接口
+  route_b_vae_full930.py             VAE 网络结构
+  train_force_action_mixed_v4_adaptive.py
+                                      V4 训练参考代码
+
+models/
+  v4_force_estimator.pt              V4 权重
+  v4_config.json                     训练配置
+  v4_history.json                    训练历史
+  SHA256SUMS                         权重校验文件
+
+docs/
+  V4_inference_handoff.md            原调用交接文档
+  V4_evaluation_notes.md             全工况复核记录
+  MODEL_CARD.md                      模型卡
+
+evaluations/
+  final_v4_comparison.json           最终评估数据
+  final_v4_comparison.png            最终评估图
+
+examples/
+  infer.py                           最小命令行推理示例
+```
+
+## 训练代码说明
+
+`src/train_force_action_mixed_v4_adaptive.py` 是 V4 的训练参考代码。
+
+本仓库没有包含：
+
+- 原始训练数据。
+- 上一阶段 V3 源权重。
+- 完整的 SuperMimic 训练环境。
+
+因此不能只凭本仓库直接从头复训 V4。训练文件主要用于查看数据接口、损失函数
+和微调流程。
 
 ## 常见问题
 
-### 出现 `ModuleNotFoundError: force_action_branch_v2`
+### `ModuleNotFoundError: force_action_branch_v2`
 
-确认在仓库根目录执行过：
+在仓库根目录执行：
 
 ```bash
 export PYTHONPATH="$(pwd)/src:${PYTHONPATH:-}"
 ```
 
-### 出现维度错误
+### 输入维度错误
 
-检查输入是否为：
+确认输入为：
 
 ```text
 [batch_size, 930]
 ```
 
-### 输出全为零或异常
+### 模型输出异常或全部接近零
 
-检查输入是否已经归一化、是否使用了正确的观测历史，以及是否错误地截取了前
-640 维。
+检查：
+
+- 是否使用步后观测。
+- 是否传入完整的 930 维。
+- 是否错误地只传了前 640 维。
+- 是否在外部重复归一化。
+- 动作历史是否与当前观测正确对齐。
 
 ### GPU 不可用
 
-将加载模型时的设备改为：
+将设备改为 CPU：
 
 ```python
 estimator = load_action_force_estimator(
@@ -277,12 +408,6 @@ estimator = load_action_force_estimator(
 )
 ```
 
-## 仓库目录
+### V4 是否支持接触点或未来力
 
-```text
-src/          V4 推理代码、VAE 结构和训练参考代码
-models/       V4 权重、训练配置、训练历史和校验文件
-docs/         调用交接、评估说明和模型卡
-evaluations/  最终评估数据和图片
-examples/     最小命令行推理示例
-```
+不支持。V4 只输出当前三维躯干外力。多接触点、位置和未来力属于后续模型。
